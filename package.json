@@ -20,12 +20,13 @@
     "check": "oxfmt --check . && oxlint src/ && tsc"
   },
   "dependencies": {
-    "@cloudflare/ai-chat": "^0.8.0",
+    "@ai-sdk/openai": "^3.0.67",
+    "@cloudflare/ai-chat": "^0.8.1",
     "@cloudflare/kumo": "^2.4.1",
     "@phosphor-icons/react": "^2.1.10",
     "@streamdown/code": "^1.1.1",
-    "agents": "^0.14.0",
-    "ai": "^6.0.194",
+    "agents": "^0.14.1",
+    "ai": "^6.0.196",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "streamdown": "^2.5.0",
@@ -34,8 +35,8 @@
   },
   "devDependencies": {
     "@babel/plugin-proposal-decorators": "^7.29.7",
-    "@cloudflare/vite-plugin": "1.39.1",
-    "@cloudflare/workers-types": "^4.20260602.1",
+    "@cloudflare/vite-plugin": "1.39.2",
+    "@cloudflare/workers-types": "^4.20260604.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^25.9.1",

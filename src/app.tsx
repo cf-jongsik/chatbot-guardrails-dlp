@@ -9,9 +9,9 @@ import {
   Button,
   Empty,
   InputArea,
-  Surface,
+  LayerCard,
   Switch,
-  Text
+  Text,
 } from "@cloudflare/kumo";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { Streamdown } from "streamdown";
@@ -36,7 +36,7 @@ import {
   XIcon,
   WrenchIcon,
   PaperclipIcon,
-  ImageIcon
+  ImageIcon,
 } from "@phosphor-icons/react";
 
 // ── Attachment helpers ────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function createAttachment(file: File): Attachment {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     file,
     preview: URL.createObjectURL(file),
-    mediaType: file.type || "application/octet-stream"
+    mediaType: file.type || "application/octet-stream",
   };
 }
 
@@ -70,7 +70,7 @@ function fileToDataUri(file: File): Promise<string> {
 
 function ThemeToggle() {
   const [dark, setDark] = useState(
-    () => document.documentElement.getAttribute("data-mode") === "dark"
+    () => document.documentElement.getAttribute("data-mode") === "dark",
   );
 
   const toggle = useCallback(() => {
@@ -97,7 +97,7 @@ function ThemeToggle() {
 
 function ToolPartView({
   part,
-  addToolApprovalResponse
+  addToolApprovalResponse,
 }: {
   part: UIMessage["parts"][number];
   addToolApprovalResponse: (response: {
@@ -112,7 +112,7 @@ function ToolPartView({
   if (part.state === "output-available") {
     return (
       <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
+        <LayerCard className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
           <div className="flex items-center gap-2 mb-1">
             <GearIcon size={14} className="text-kumo-inactive" />
             <Text size="xs" variant="secondary" bold>
@@ -125,7 +125,7 @@ function ToolPartView({
               {JSON.stringify(part.output, null, 2)}
             </Text>
           </div>
-        </Surface>
+        </LayerCard>
       </div>
     );
   }
@@ -135,7 +135,7 @@ function ToolPartView({
     const approvalId = (part.approval as { id?: string })?.id;
     return (
       <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-3 rounded-xl ring-2 ring-kumo-warning">
+        <LayerCard className="max-w-[85%] px-4 py-3 rounded-xl ring-2 ring-kumo-warning">
           <div className="flex items-center gap-2 mb-2">
             <GearIcon size={14} className="text-kumo-warning" />
             <Text size="sm" bold>
@@ -173,7 +173,7 @@ function ToolPartView({
               Reject
             </Button>
           </div>
-        </Surface>
+        </LayerCard>
       </div>
     );
   }
@@ -186,7 +186,7 @@ function ToolPartView({
   ) {
     return (
       <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
+        <LayerCard className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
           <div className="flex items-center gap-2">
             <XCircleIcon size={14} className="text-kumo-danger" />
             <Text size="xs" variant="secondary" bold>
@@ -194,7 +194,7 @@ function ToolPartView({
             </Text>
             <Badge variant="secondary">Rejected</Badge>
           </div>
-        </Surface>
+        </LayerCard>
       </div>
     );
   }
@@ -203,14 +203,14 @@ function ToolPartView({
   if (part.state === "input-available" || part.state === "input-streaming") {
     return (
       <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
+        <LayerCard className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
           <div className="flex items-center gap-2">
             <GearIcon size={14} className="text-kumo-inactive animate-spin" />
             <Text size="xs" variant="secondary">
               Running {toolName}...
             </Text>
           </div>
-        </Surface>
+        </LayerCard>
       </div>
     );
   }
@@ -234,7 +234,7 @@ function Chat() {
     prompts: [],
     resources: [],
     servers: {},
-    tools: []
+    tools: [],
   });
   const [showMcpPanel, setShowMcpPanel] = useState(false);
   const [mcpName, setMcpName] = useState("");
@@ -248,7 +248,7 @@ function Chat() {
     onClose: useCallback(() => setConnected(false), []),
     onError: useCallback(
       (error: Event) => console.error("WebSocket error:", error),
-      []
+      [],
     ),
     onMcpUpdate: useCallback((state: MCPServersState) => {
       setMcpState(state);
@@ -261,15 +261,15 @@ function Chat() {
             toasts.add({
               title: "Scheduled task completed",
               description: data.description,
-              timeout: 0
+              timeout: 0,
             });
           }
         } catch {
           // Not JSON or not our event
         }
       },
-      [toasts]
-    )
+      [toasts],
+    ),
   });
 
   // Close MCP panel when clicking outside
@@ -318,7 +318,7 @@ function Chat() {
     clearHistory,
     addToolApprovalResponse,
     stop,
-    status
+    status,
   } = useAgentChat({
     agent,
     onToolCall: async (event) => {
@@ -330,11 +330,11 @@ function Chat() {
           toolCallId: event.toolCall.toolCallId,
           output: {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            localTime: new Date().toLocaleTimeString()
-          }
+            localTime: new Date().toLocaleTimeString(),
+          },
         });
       }
-    }
+    },
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -383,7 +383,7 @@ function Chat() {
       setIsDragging(false);
       if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
     },
-    [addFiles]
+    [addFiles],
   );
 
   const handlePaste = useCallback(
@@ -402,7 +402,7 @@ function Chat() {
         addFiles(files);
       }
     },
-    [addFiles]
+    [addFiles],
   );
 
   const send = useCallback(async () => {
@@ -497,7 +497,7 @@ function Chat() {
               {/* MCP Dropdown Panel */}
               {showMcpPanel && (
                 <div className="absolute right-0 top-full mt-2 w-96 z-50">
-                  <Surface className="rounded-xl ring ring-kumo-line shadow-lg p-4 space-y-4">
+                  <LayerCard className="rounded-xl ring ring-kumo-line shadow-lg p-4 space-y-4">
                     {/* Panel Header */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -578,11 +578,10 @@ function Chat() {
                                 </span>
                                 <Badge
                                   variant={
-                                    server.state === "ready"
-                                      ? "primary"
-                                      : server.state === "failed"
-                                        ? "destructive"
-                                        : "secondary"
+                                    server.state === "ready" ? "primary"
+                                    : server.state === "failed" ?
+                                      "destructive"
+                                    : "secondary"
                                   }
                                 >
                                   {server.state}
@@ -608,7 +607,7 @@ function Chat() {
                                       window.open(
                                         server.auth_url as string,
                                         "oauth",
-                                        "width=600,height=800"
+                                        "width=600,height=800",
                                       )
                                     }
                                   >
@@ -642,7 +641,7 @@ function Chat() {
                         </div>
                       </div>
                     )}
-                  </Surface>
+                  </LayerCard>
                 </div>
               )}
             </div>
@@ -670,7 +669,7 @@ function Chat() {
                     "What's the weather in Paris?",
                     "What timezone am I in?",
                     "Calculate 5000 * 3",
-                    "Remind me in 5 minutes to take a break"
+                    "Remind me in 5 minutes to take a break",
                   ].map((prompt) => (
                     <Button
                       key={prompt}
@@ -680,7 +679,7 @@ function Chat() {
                       onClick={() => {
                         sendMessage({
                           role: "user",
-                          parts: [{ type: "text", text: prompt }]
+                          parts: [{ type: "text", text: prompt }],
                         });
                       }}
                     >
@@ -719,7 +718,7 @@ function Chat() {
                   .filter(
                     (part) =>
                       part.type === "reasoning" &&
-                      (part as { text?: string }).text?.trim()
+                      (part as { text?: string }).text?.trim(),
                   )
                   .map((part, i) => {
                     const reasoning = part as {
@@ -736,15 +735,14 @@ function Chat() {
                             <span className="font-medium text-kumo-default">
                               Reasoning
                             </span>
-                            {isDone ? (
+                            {isDone ?
                               <span className="text-xs text-kumo-success">
                                 Complete
                               </span>
-                            ) : (
-                              <span className="text-xs text-kumo-brand">
+                            : <span className="text-xs text-kumo-brand">
                                 Thinking...
                               </span>
-                            )}
+                            }
                             <CaretDownIcon
                               size={14}
                               className="ml-auto text-kumo-inactive"
@@ -764,8 +762,8 @@ function Chat() {
                     (part): part is Extract<typeof part, { type: "file" }> =>
                       part.type === "file" &&
                       (part as { mediaType?: string }).mediaType?.startsWith(
-                        "image/"
-                      ) === true
+                        "image/",
+                      ) === true,
                   )
                   .map((part, i) => (
                     <div
@@ -895,15 +893,15 @@ function Chat() {
               }}
               onPaste={handlePaste}
               placeholder={
-                attachments.length > 0
-                  ? "Add a message or send images..."
-                  : "Send a message..."
+                attachments.length > 0 ?
+                  "Add a message or send images..."
+                : "Send a message..."
               }
               disabled={!connected || isStreaming}
               rows={1}
               className="flex-1 ring-0! focus:ring-0! shadow-none! bg-transparent! outline-none! resize-none max-h-40"
             />
-            {isStreaming ? (
+            {isStreaming ?
               <Button
                 type="button"
                 variant="secondary"
@@ -913,8 +911,7 @@ function Chat() {
                 onClick={stop}
                 className="mb-0.5"
               />
-            ) : (
-              <Button
+            : <Button
                 type="submit"
                 variant="primary"
                 shape="square"
@@ -925,7 +922,7 @@ function Chat() {
                 icon={<PaperPlaneRightIcon size={18} />}
                 className="mb-0.5"
               />
-            )}
+            }
           </div>
         </form>
       </div>

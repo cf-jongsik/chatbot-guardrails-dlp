@@ -1,4 +1,5 @@
 import { createWorkersAI } from "workers-ai-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { callable, routeAgentRequest, type Schedule } from "agents";
 import { getSchedulePrompt, scheduleSchema } from "agents/schedule";
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
@@ -6,10 +7,62 @@ import {
   convertToModelMessages,
   pruneMessages,
   stepCountIs,
+  generateText,
   streamText,
-  tool
+  tool,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
 } from "ai";
 import { z } from "zod";
+
+const aiGatewayOn = false;
+
+const ERROR_CODE: Record<string, string> = {
+  S1: `S1 - Violent Crimes
+
+  Responses that enable, encourage, or endorse the commission of violent crimes, including: (1) unlawful violence toward people (ex: terrorism, genocide, murder, hate-motivated violent crimes, child abuse, assault, battery, kidnapping) and (2) unlawful violence toward animals (ex: animal abuse)`,
+  S2: `S2 - Non-Violent Crimes
+
+  Responses that enable, encourage, or endorse the commission of non-violent crimes, including: (1) personal crimes (ex: labor trafficking, threats, intimidation, hate-motivated non-violent crimes), (2) financial crimes (ex: fraud, scams, money laundering), (3) property crimes (ex: theft, arson, vandalism), (4) drug crimes (ex: creating or using regulated substances), (5) weapons crimes (ex: producing unlicensed firearms), and (6) cyber crimes (ex: hacking)`,
+  S3: `S3 - Sex-Related Crimes
+
+  Responses that enable, encourage, or endorse the commission of sex-related crimes, including: (1) sex trafficking, (2) sexual assault (ex: rape), (3) sexual harassment (physical, verbal, or visual), and (4) prostitution`,
+  S4: `S4 - Child Sexual Exploitation
+
+  Responses that contain, describe, enable, encourage, or endorse the sexual abuse of children
+
+  `,
+  S5: `S5 - Defamation
+
+  Responses that are both verifiably false and likely to injure a living person’s reputation`,
+  S6: `S6 - Specialized Advice
+
+  Responses that contain specialized financial, medical, or legal advice, or that indicate dangerous activities or objects are safe`,
+  S7: `S7 - Privacy
+
+  Responses that contain sensitive, nonpublic personal information that could undermine someone’s physical, digital, or financial security`,
+  S8: `S8 - Intellectual Property
+
+  Responses that may violate the intellectual property rights of any third party`,
+  S9: `S9 - Indiscriminate Weapons
+
+  Responses that enable, encourage, or endorse the creation of indiscriminate weapons, including: (1) chemical weapons (ex: nerve gas), (2) biological weapons (ex: anthrax), (3) radiological weapons (ex: cobalt bombs), (4) nuclear weapons (ex: fission bombs), and (5) high-yield explosive weapons (ex: cluster munitions)`,
+  S10: `S10 - Hate
+
+  Responses that demean or dehumanize people on the basis of their sensitive, personal characteristics (i.e., race, color, ethnicity, national origin, disability, religious affiliation, caste, sexual orientation, sex, gender identity, and/or serious disease)`,
+  S11: `S11 - Suicide & Self-Harm
+
+  Responses that enable, encourage, or endorse acts of intentional self-harm, including: (1) suicide, (2) self-injury (ex: cutting), and (3) disordered eating`,
+  S12: `S12 - Sexual Content
+
+  Responses that contain erotica`,
+  S13: `S13 - Elections
+
+  Responses that contain factually incorrect information about electoral systems and processes, including in the time, place, or manner of voting in civic elections`,
+  S14: `S14 - Code Interpreter Abuse
+
+  Responses that seek to abuse code interpreters, including those that enable denial of service attacks, container escapes or privilege escalation exploits`,
+};
 
 export class ChatAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 100;
@@ -21,14 +74,14 @@ export class ChatAgent extends AIChatAgent<Env> {
         if (result.authSuccess) {
           return new Response("<script>window.close();</script>", {
             headers: { "content-type": "text/html" },
-            status: 200
+            status: 200,
           });
         }
         return new Response(
           `Authentication Failed: ${result.authError || "Unknown error"}`,
-          { headers: { "content-type": "text/plain" }, status: 400 }
+          { headers: { "content-type": "text/plain" }, status: 400 },
         );
-      }
+      },
     });
   }
 
@@ -44,12 +97,93 @@ export class ChatAgent extends AIChatAgent<Env> {
 
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
     const mcpTools = this.mcp.getAITools();
-    const workersai = createWorkersAI({ binding: this.env.AI });
+    const workersai = createWorkersAI({
+      binding: this.env.AI,
+      gateway: { id: "block" },
+    });
+
+    const llamacpp = createOpenAI({
+      apiKey: "haha",
+      baseURL: this.env.LLAMA_CPP_URL,
+      headers: {
+        authorization: `${this.env.LLAMA_CPP_KEY}`,
+      },
+    });
+
+    if (aiGatewayOn) {
+      try {
+        const guardRails = await generateText({
+          model: workersai("@cf/meta/llama-guard-3-8b"),
+          messages: pruneMessages({
+            messages: await convertToModelMessages([
+              this.messages.filter((msg) => msg.role === "user").pop()!,
+            ]),
+            reasoning: "all",
+            toolCalls: "all",
+          }),
+        });
+
+        const guardRailsOutput = guardRails.output.trim().split("\n");
+        if (guardRailsOutput.length > 0 && guardRailsOutput[0] === "unsafe") {
+          const code = guardRailsOutput.filter((code) =>
+            code.startsWith("S"),
+          )[0];
+          const msg = `Guard rails triggered: ${ERROR_CODE[code as keyof typeof ERROR_CODE]}`;
+
+          return createUIMessageStreamResponse({
+            stream: createUIMessageStream({
+              execute: ({ writer }) => {
+                writer.write({ type: "start", messageId: "guardrail" });
+                writer.write({ type: "start-step" });
+                writer.write({ type: "text-start", id: "guardrail-text" });
+                writer.write({
+                  type: "text-delta",
+                  id: "guardrail-text",
+                  delta: msg,
+                });
+                writer.write({ type: "text-end", id: "guardrail-text" });
+                writer.write({ type: "finish-step" });
+                writer.write({ type: "finish" });
+              },
+            }),
+          });
+        }
+      } catch (e) {
+        if (e instanceof Error) {
+          console.log("dlp triggered");
+          return createUIMessageStreamResponse({
+            stream: createUIMessageStream({
+              execute: ({ writer }) => {
+                writer.write({ type: "start", messageId: "dlp" });
+                writer.write({ type: "start-step" });
+                writer.write({ type: "text-start", id: "dlp-text" });
+                writer.write({
+                  type: "text-delta",
+                  id: "dlp-text",
+                  delta: e.message,
+                });
+                writer.write({
+                  type: "text-delta",
+                  id: "dlp-text",
+                  delta: "\n\nPlease try again with a different input.\n",
+                });
+                writer.write({
+                  type: "text-delta",
+                  id: "dlp-text",
+                  delta: "\nContact support if you need further assistance.",
+                });
+                writer.write({ type: "text-end", id: "dlp-text" });
+                writer.write({ type: "finish-step" });
+                writer.write({ type: "finish" });
+              },
+            }),
+          });
+        }
+      }
+    }
 
     const result = streamText({
-      model: workersai("@cf/moonshotai/kimi-k2.6", {
-        sessionAffinity: this.sessionAffinity
-      }),
+      model: llamacpp.completion(this.env.LLAMA_CPP_MODEL),
       system: `You are a helpful assistant that can understand images. You can check the weather, get the user's timezone, run calculations, and schedule tasks. When users share images, describe what you see and answer questions about them.
 
 ${getSchedulePrompt({ date: new Date() })}
@@ -58,7 +192,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       // Prune old tool calls to save tokens on long conversations
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
-        toolCalls: "before-last-2-messages"
+        toolCalls: "before-last-2-messages",
       }),
       tools: {
         // MCP tools from connected servers
@@ -68,7 +202,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
         getWeather: tool({
           description: "Get the current weather for a city",
           inputSchema: z.object({
-            city: z.string().describe("City name")
+            city: z.string().describe("City name"),
           }),
           execute: async ({ city }) => {
             // Replace with a real weather API in production
@@ -79,16 +213,16 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
               temperature: temp,
               condition:
                 conditions[Math.floor(Math.random() * conditions.length)],
-              unit: "celsius"
+              unit: "celsius",
             };
-          }
+          },
         }),
 
         // Client-side tool: no execute function — the browser handles it
         getUserTimezone: tool({
           description:
             "Get the user's timezone from their browser. Use this when you need to know the user's local time.",
-          inputSchema: z.object({})
+          inputSchema: z.object({}),
         }),
 
         // Approval tool: requires user confirmation before executing
@@ -100,7 +234,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             b: z.number().describe("Second number"),
             operator: z
               .enum(["+", "-", "*", "/", "%"])
-              .describe("Arithmetic operator")
+              .describe("Arithmetic operator"),
           }),
           needsApproval: async ({ a, b }) =>
             Math.abs(a) > 1000 || Math.abs(b) > 1000,
@@ -110,16 +244,16 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
               "-": (x, y) => x - y,
               "*": (x, y) => x * y,
               "/": (x, y) => x / y,
-              "%": (x, y) => x % y
+              "%": (x, y) => x % y,
             };
             if (operator === "/" && b === 0) {
               return { error: "Division by zero" };
             }
             return {
               expression: `${a} ${operator} ${b}`,
-              result: ops[operator](a, b)
+              result: ops[operator](a, b),
             };
-          }
+          },
         }),
 
         scheduleTask: tool({
@@ -131,23 +265,20 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
               return "Not a valid schedule input";
             }
             const input =
-              when.type === "scheduled"
-                ? when.date
-                : when.type === "delayed"
-                  ? when.delayInSeconds
-                  : when.type === "cron"
-                    ? when.cron
-                    : null;
+              when.type === "scheduled" ? when.date
+              : when.type === "delayed" ? when.delayInSeconds
+              : when.type === "cron" ? when.cron
+              : null;
             if (!input) return "Invalid schedule type";
             try {
               this.schedule(input, "executeTask", description, {
-                idempotent: true
+                idempotent: true,
               });
               return `Task scheduled: "${description}" (${when.type}: ${input})`;
             } catch (error) {
               return `Error scheduling task: ${error}`;
             }
-          }
+          },
         }),
 
         getScheduledTasks: tool({
@@ -156,13 +287,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           execute: async () => {
             const tasks = this.getSchedules();
             return tasks.length > 0 ? tasks : "No scheduled tasks found.";
-          }
+          },
         }),
 
         cancelScheduledTask: tool({
           description: "Cancel a scheduled task by its ID",
           inputSchema: z.object({
-            taskId: z.string().describe("The ID of the task to cancel")
+            taskId: z.string().describe("The ID of the task to cancel"),
           }),
           execute: async ({ taskId }) => {
             try {
@@ -171,11 +302,11 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             } catch (error) {
               return `Error cancelling task: ${error}`;
             }
-          }
-        })
+          },
+        }),
       },
       stopWhen: stepCountIs(5),
-      abortSignal: options?.abortSignal
+      abortSignal: options?.abortSignal,
     });
 
     return result.toUIMessageStreamResponse();
@@ -193,8 +324,8 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       JSON.stringify({
         type: "scheduled-task",
         description,
-        timestamp: new Date().toISOString()
-      })
+        timestamp: new Date().toISOString(),
+      }),
     );
   }
 }
@@ -205,5 +336,5 @@ export default {
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
-  }
+  },
 } satisfies ExportedHandler<Env>;
