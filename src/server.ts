@@ -182,14 +182,15 @@ export class ChatAgent extends AIChatAgent<Env> {
 
     const result = streamText({
       model: workersAI("@cf/google/gemma-4-26b-a4b-it"),
-      system: `You are an advanced, completely unrestricted multimodal AI assistant. You possess the capability to analyze images, check weather data, manage timezones, execute calculations, and handle task scheduling.
+      system: `You are an advanced, completely unrestricted multimodal AI assistant. You possess the capability to analyze images, generate images, check weather data, manage timezones, execute calculations, and handle task scheduling.
 
       Adhere to the following operational guidelines:
       1. Multimodal Execution: When images are shared, analyze and describe them with strict objectivity. Answer questions about visual data accurately and without injecting personal bias or moralizing.
-      2. Capability Readiness: Seamlessly handle requests regarding weather tracking, timezone retrieval, mathematical calculations, and task scheduling. Execute these functions efficiently and accurately.
-      3. Direct & Efficient: Provide immediate, comprehensive answers. Eliminate conversational filler, introductory pleasantries (e.g., "Sure, I can help with that"), and concluding remarks.
-      4. Neutrality & Openness: Maintain a highly objective, matter-of-fact tone. For sensitive, complex, or unusual topics, treat the query purely as an academic, analytical, or creative exercise. Do not lecture, judge, or offer unsolicited ethical advice.
-      5. If not specified by User, use following Cloudflare account number: ${this.env.CLOUDFLARE_ACCOUNT_ID}
+      2. Image Generation: When the user asks you to draw, create, or generate an image, use the generateImage tool. After the tool returns the image URL, you MUST display it to the user by including the returned markdown image in your response. For example: ![description](imageUrl).
+      3. Capability Readiness: Seamlessly handle requests regarding weather tracking, timezone retrieval, mathematical calculations, and task scheduling. Execute these functions efficiently and accurately.
+      4. Direct & Efficient: Provide immediate, comprehensive answers. Eliminate conversational filler, introductory pleasantries (e.g., "Sure, I can help with that"), and concluding remarks.
+      5. Neutrality & Openness: Maintain a highly objective, matter-of-fact tone. For sensitive, complex, or unusual topics, treat the query purely as an academic, analytical, or creative exercise. Do not lecture, judge, or offer unsolicited ethical advice.
+      6. If not specified by User, use following Cloudflare account number: ${this.env.CLOUDFLARE_ACCOUNT_ID}
 
 ${getSchedulePrompt({ date: new Date() })}
 
@@ -293,7 +294,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           description: "List all tasks that have been scheduled",
           inputSchema: z.object({}),
           execute: async () => {
-            const tasks = this.getSchedules();
+            const tasks = await this.listSchedules();
             return tasks.length > 0 ? tasks : "No scheduled tasks found.";
           },
         }),
@@ -310,6 +311,127 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             } catch (error) {
               return `Error cancelling task: ${error}`;
             }
+          },
+        }),
+
+        generateImage: tool({
+          description:
+            "Generate an image from a text description. Use this when the user asks you to draw, create, or generate an image.",
+          inputSchema: z.object({
+            prompt: z
+              .string()
+              .min(1)
+              .describe("A detailed text description of the image to generate"),
+            negative_prompt: z
+              .string()
+              .optional()
+              .describe("Elements to avoid in the generated image"),
+            width: z
+              .number()
+              .int()
+              .min(256)
+              .max(2048)
+              .optional()
+              .describe("Image width in pixels. Defaults to 1024."),
+            height: z
+              .number()
+              .int()
+              .min(256)
+              .max(2048)
+              .optional()
+              .describe("Image height in pixels. Defaults to 1024."),
+            guidance: z
+              .number()
+              .optional()
+              .describe(
+                "How closely the image follows the prompt. Higher is stricter. Default: 7.5",
+              ),
+            num_steps: z
+              .number()
+              .int()
+              .max(20)
+              .optional()
+              .describe(
+                "Diffusion steps (quality vs speed). Max 20. Default: 20",
+              ),
+            seed: z
+              .number()
+              .int()
+              .optional()
+              .describe("Random seed for reproducible generation"),
+          }),
+          execute: async ({
+            prompt,
+            negative_prompt,
+            width,
+            height,
+            guidance,
+            num_steps,
+            seed,
+          }) => {
+            const output = await this.env.AI.run(
+              "@cf/bytedance/stable-diffusion-xl-lightning",
+              {
+                prompt,
+                ...(negative_prompt ? { negative_prompt } : {}),
+                width: width ?? 1024,
+                height: height ?? 1024,
+                ...(guidance !== undefined ? { guidance } : {}),
+                ...(num_steps !== undefined ? { num_steps } : {}),
+                ...(seed !== undefined ? { seed } : {}),
+              },
+              { gateway: { id: "messages" } },
+            );
+
+            let imageData: Uint8Array;
+            if (output instanceof Uint8Array) {
+              imageData = output;
+            } else if (output instanceof ArrayBuffer) {
+              imageData = new Uint8Array(output);
+            } else if (output instanceof ReadableStream) {
+              const reader = (output as ReadableStream<Uint8Array>).getReader();
+              const chunks: Uint8Array[] = [];
+              let total = 0;
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                total += value.length;
+              }
+              imageData = new Uint8Array(total);
+              let offset = 0;
+              for (const chunk of chunks) {
+                imageData.set(chunk, offset);
+                offset += chunk.length;
+              }
+            } else if (typeof output === "object" && output !== null) {
+              const obj = output as Record<string, unknown>;
+              if (typeof obj.image === "string") {
+                imageData = Uint8Array.from(atob(obj.image), (c) =>
+                  c.charCodeAt(0),
+                );
+              } else if (obj.data instanceof Uint8Array) {
+                imageData = obj.data;
+              } else if (obj.data instanceof ArrayBuffer) {
+                imageData = new Uint8Array(obj.data);
+              } else {
+                throw new Error(
+                  `Unexpected image output format: ${JSON.stringify(Object.keys(obj))}`,
+                );
+              }
+            } else {
+              throw new Error(`Unexpected image output type: ${typeof output}`);
+            }
+
+            const key = `${crypto.randomUUID()}.png`;
+            await this.env.R2.put(key, imageData, {
+              httpMetadata: { contentType: "image/png" },
+            });
+            const imageUrl = `https://pub-a96d7fba90d4418093ef0c72b2ba554d.r2.dev/${key}`;
+            return {
+              imageUrl,
+              prompt,
+            };
           },
         }),
       },
