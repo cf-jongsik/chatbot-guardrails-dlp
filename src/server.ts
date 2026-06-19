@@ -96,7 +96,7 @@ export class ChatAgent extends AIChatAgent<Env> {
     try {
       const guardrailAI = createWorkersAI({
         binding: this.env.AI,
-        gateway: { id: "guardrails" },
+        gateway: { id: this.env.GUARDRAIL_GATEWAY },
       });
 
       const latestMessage = this.messages
@@ -177,7 +177,7 @@ export class ChatAgent extends AIChatAgent<Env> {
     const mcpTools = this.mcp.getAITools();
     const workersAI = createWorkersAI({
       binding: this.env.AI,
-      gateway: { id: "messages" },
+      gateway: { id: this.env.MESSAGE_GATEWAY },
     });
 
     const result = streamText({
@@ -271,13 +271,10 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
               return "Not a valid schedule input";
             }
             const input =
-              when.type === "scheduled"
-                ? when.date
-                : when.type === "delayed"
-                  ? when.delayInSeconds
-                  : when.type === "cron"
-                    ? when.cron
-                    : null;
+              when.type === "scheduled" ? when.date
+              : when.type === "delayed" ? when.delayInSeconds
+              : when.type === "cron" ? when.cron
+              : null;
             if (!input) return "Invalid schedule type";
             try {
               this.schedule(input, "executeTask", description, {
@@ -316,118 +313,41 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 
         generateImage: tool({
           description:
-            "Generate an image from a text description. Use this when the user asks you to draw, create, or generate an image.",
+            "Generate an image from a text description. Use this when the user asks you to draw, create, or generate an image. Powered by Flux-1 Schnell.",
           inputSchema: z.object({
             prompt: z
               .string()
               .min(1)
+              .max(2048)
               .describe("A detailed text description of the image to generate"),
-            negative_prompt: z
-              .string()
-              .optional()
-              .describe("Elements to avoid in the generated image"),
-            width: z
+            steps: z
               .number()
               .int()
-              .min(256)
-              .max(2048)
-              .optional()
-              .describe("Image width in pixels. Defaults to 1024."),
-            height: z
-              .number()
-              .int()
-              .min(256)
-              .max(2048)
-              .optional()
-              .describe("Image height in pixels. Defaults to 1024."),
-            guidance: z
-              .number()
+              .max(8)
               .optional()
               .describe(
-                "How closely the image follows the prompt. Higher is stricter. Default: 7.5",
+                "Diffusion steps (quality vs speed). Max 8. Default: 4",
               ),
-            num_steps: z
-              .number()
-              .int()
-              .max(20)
-              .optional()
-              .describe(
-                "Diffusion steps (quality vs speed). Max 20. Default: 20",
-              ),
-            seed: z
-              .number()
-              .int()
-              .optional()
-              .describe("Random seed for reproducible generation"),
           }),
-          execute: async ({
-            prompt,
-            negative_prompt,
-            width,
-            height,
-            guidance,
-            num_steps,
-            seed,
-          }) => {
-            const output = await this.env.AI.run(
-              "@cf/bytedance/stable-diffusion-xl-lightning",
+          execute: async ({ prompt, steps }) => {
+            const output = (await this.env.AI.run(
+              "@cf/black-forest-labs/flux-1-schnell",
               {
                 prompt,
-                ...(negative_prompt ? { negative_prompt } : {}),
-                width: width ?? 1024,
-                height: height ?? 1024,
-                ...(guidance !== undefined ? { guidance } : {}),
-                ...(num_steps !== undefined ? { num_steps } : {}),
-                ...(seed !== undefined ? { seed } : {}),
+                ...(steps !== undefined ? { steps } : {}),
               },
-              { gateway: { id: "messages" } },
-            );
+              { gateway: { id: this.env.MESSAGE_GATEWAY } },
+            )) as { image: string };
 
-            let imageData: Uint8Array;
-            if (output instanceof Uint8Array) {
-              imageData = output;
-            } else if (output instanceof ArrayBuffer) {
-              imageData = new Uint8Array(output);
-            } else if (output instanceof ReadableStream) {
-              const reader = (output as ReadableStream<Uint8Array>).getReader();
-              const chunks: Uint8Array[] = [];
-              let total = 0;
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-                total += value.length;
-              }
-              imageData = new Uint8Array(total);
-              let offset = 0;
-              for (const chunk of chunks) {
-                imageData.set(chunk, offset);
-                offset += chunk.length;
-              }
-            } else if (typeof output === "object" && output !== null) {
-              const obj = output as Record<string, unknown>;
-              if (typeof obj.image === "string") {
-                imageData = Uint8Array.from(atob(obj.image), (c) =>
-                  c.charCodeAt(0),
-                );
-              } else if (obj.data instanceof Uint8Array) {
-                imageData = obj.data;
-              } else if (obj.data instanceof ArrayBuffer) {
-                imageData = new Uint8Array(obj.data);
-              } else {
-                throw new Error(
-                  `Unexpected image output format: ${JSON.stringify(Object.keys(obj))}`,
-                );
-              }
-            } else {
-              throw new Error(`Unexpected image output type: ${typeof output}`);
-            }
+            const imageData = Uint8Array.from(atob(output.image), (c) =>
+              c.charCodeAt(0),
+            );
 
             const key = `${crypto.randomUUID()}.png`;
             await this.env.R2.put(key, imageData, {
               httpMetadata: { contentType: "image/png" },
             });
-            const imageUrl = `https://pub-a96d7fba90d4418093ef0c72b2ba554d.r2.dev/${key}`;
+            const imageUrl = `${this.env.R2_PUBLIC_URL}/${key}`;
             return {
               imageUrl,
               prompt,
