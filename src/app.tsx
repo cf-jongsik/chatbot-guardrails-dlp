@@ -264,6 +264,17 @@ function Chat() {
               timeout: 0,
             });
           }
+          if (
+            data.type === "cf_agent_use_chat_response" &&
+            data.error === true
+          ) {
+            toasts.add({
+              title: "Chat error",
+              description: data.body || "An error occurred.",
+              variant: "error",
+              timeout: 0,
+            });
+          }
         } catch {
           // Not JSON or not our event
         }
@@ -578,10 +589,11 @@ function Chat() {
                                 </span>
                                 <Badge
                                   variant={
-                                    server.state === "ready" ? "primary"
-                                    : server.state === "failed" ?
-                                      "destructive"
-                                    : "secondary"
+                                    server.state === "ready"
+                                      ? "primary"
+                                      : server.state === "failed"
+                                        ? "destructive"
+                                        : "secondary"
                                   }
                                 >
                                   {server.state}
@@ -735,14 +747,15 @@ function Chat() {
                             <span className="font-medium text-kumo-default">
                               Reasoning
                             </span>
-                            {isDone ?
+                            {isDone ? (
                               <span className="text-xs text-kumo-success">
                                 Complete
                               </span>
-                            : <span className="text-xs text-kumo-brand">
+                            ) : (
+                              <span className="text-xs text-kumo-brand">
                                 Thinking...
                               </span>
-                            }
+                            )}
                             <CaretDownIcon
                               size={14}
                               className="ml-auto text-kumo-inactive"
@@ -893,15 +906,15 @@ function Chat() {
               }}
               onPaste={handlePaste}
               placeholder={
-                attachments.length > 0 ?
-                  "Add a message or send images..."
-                : "Send a message..."
+                attachments.length > 0
+                  ? "Add a message or send images..."
+                  : "Send a message..."
               }
               disabled={!connected || isStreaming}
               rows={1}
               className="flex-1 ring-0! focus:ring-0! shadow-none! bg-transparent! outline-none! resize-none max-h-40"
             />
-            {isStreaming ?
+            {isStreaming ? (
               <Button
                 type="button"
                 variant="secondary"
@@ -911,7 +924,8 @@ function Chat() {
                 onClick={stop}
                 className="mb-0.5"
               />
-            : <Button
+            ) : (
+              <Button
                 type="submit"
                 variant="primary"
                 shape="square"
@@ -922,7 +936,7 @@ function Chat() {
                 icon={<PaperPlaneRightIcon size={18} />}
                 className="mb-0.5"
               />
-            }
+            )}
           </div>
         </form>
       </div>
