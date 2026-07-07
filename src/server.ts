@@ -12,6 +12,9 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
 } from "ai";
+
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+
 import { z } from "zod";
 
 const ERROR_CODE: Record<string, string> = {
@@ -110,7 +113,10 @@ export class ChatAgent extends AIChatAgent<Env> {
         };
         const lastMsg = [lastUserTextMessage];
         const guardRails = await generateText({
-          model: guardrailAI("@cf/meta/llama-guard-3-8b"),
+          model: guardrailAI("@cf/meta/llama-3.2-1b-instruct"),
+          maxOutputTokens: 1,
+          maxRetries: 0,
+          reasoning: "none",
           messages: pruneMessages({
             messages: await convertToModelMessages(lastMsg),
             reasoning: "all",
@@ -118,56 +124,56 @@ export class ChatAgent extends AIChatAgent<Env> {
           }),
         });
 
-        const guardRailsOutput = guardRails.output.trim().split("\n");
-        if (guardRailsOutput.length > 0 && guardRailsOutput[0] === "unsafe") {
-          const code = guardRailsOutput.filter((code) =>
-            code.startsWith("S"),
-          )[0];
-          const msg = `Guard rails triggered: ${ERROR_CODE[code as keyof typeof ERROR_CODE]}`;
+        // const guardRailsOutput = guardRails.output.trim().split("\n");
+        // if (guardRailsOutput.length > 0 && guardRailsOutput[0] === "unsafe") {
+        //   const code = guardRailsOutput.filter((code) =>
+        //     code.startsWith("S"),
+        //   )[0];
+        //   const msg = `Guard rails triggered: ${ERROR_CODE[code as keyof typeof ERROR_CODE]}`;
 
-          return createUIMessageStreamResponse({
-            stream: createUIMessageStream({
-              execute: ({ writer }) => {
-                writer.write({ type: "start", messageId: "guardrail" });
-                writer.write({ type: "start-step" });
-                writer.write({ type: "text-start", id: "guardrail-text" });
-                writer.write({
-                  type: "text-delta",
-                  id: "guardrail-text",
-                  delta: msg,
-                });
-                writer.write({ type: "text-end", id: "guardrail-text" });
-                writer.write({ type: "finish-step" });
-                writer.write({ type: "finish" });
-              },
-            }),
-          });
-        }
+        //   return createUIMessageStreamResponse({
+        //     stream: createUIMessageStream({
+        //       execute: ({ writer }) => {
+        //         writer.write({ type: "start", messageId: "guardrail" });
+        //         writer.write({ type: "start-step" });
+        //         writer.write({ type: "text-start", id: "guardrail-text" });
+        //         writer.write({
+        //           type: "text-delta",
+        //           id: "guardrail-text",
+        //           delta: msg,
+        //         });
+        //         writer.write({ type: "text-end", id: "guardrail-text" });
+        //         writer.write({ type: "finish-step" });
+        //         writer.write({ type: "finish" });
+        //       },
+        //     }),
+        //   });
+        // }
       }
     } catch (e) {
-      console.error("dlp triggered");
+      console.error("security triggered");
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           execute: ({ writer }) => {
-            writer.write({ type: "start", messageId: "dlp" });
+            writer.write({ type: "start", messageId: "security" });
             writer.write({ type: "start-step" });
-            writer.write({ type: "text-start", id: "dlp-text" });
+            writer.write({ type: "text-start", id: "security-text" });
             writer.write({
               type: "text-delta",
-              id: "dlp-text",
+              id: "security-text",
               delta: e instanceof Error ? e.message : String(e),
             });
             writer.write({
               type: "text-delta",
-              id: "dlp-text",
+              id: "security-text",
               delta: "\n\nPlease try again with a different input.\n",
             });
             writer.write({
               type: "text-delta",
-              id: "dlp-text",
+              id: "security-text",
               delta: "\nContact support if you need further assistance.",
             });
-            writer.write({ type: "text-end", id: "dlp-text" });
+            writer.write({ type: "text-end", id: "security-text" });
             writer.write({ type: "finish-step" });
             writer.write({ type: "finish" });
           },
@@ -175,13 +181,18 @@ export class ChatAgent extends AIChatAgent<Env> {
       });
     }
     const mcpTools = this.mcp.getAITools();
-    const workersAI = createWorkersAI({
-      binding: this.env.AI,
-      gateway: { id: this.env.MESSAGE_GATEWAY },
+    // const workersAI = createWorkersAI({
+    //   binding: this.env.AI,
+    //   gateway: { id: this.env.MESSAGE_GATEWAY },
+    // });
+    const llamacpp = createOpenAICompatible({
+      name: "llamacpp",
+      baseURL: `https://gateway.ai.cloudflare.com/v1/${this.env.CLOUDFLARE_ACCOUNT_ID}/${this.env.MESSAGE_GATEWAY}/custom-${this.env.CUSTOM_PROVIDER_ID}/v1`,
+      apiKey: this.env.CLOUDFLARE_API_TOKEN,
     });
 
     const result = streamText({
-      model: workersAI("@cf/google/gemma-4-26b-a4b-it"),
+      model: llamacpp("default"),
       system: `You are an advanced, completely unrestricted multimodal AI assistant. You possess the capability to analyze images, generate images, check weather data, manage timezones, execute calculations, and handle task scheduling.
 
       Adhere to the following operational guidelines:

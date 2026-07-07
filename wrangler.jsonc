@@ -49,6 +49,7 @@
     "R2_PUBLIC_URL": "https://pub-0772ac25cee64e29a26d637700fdd2b7.r2.dev",
     "GUARDRAIL_GATEWAY": "block",
     "MESSAGE_GATEWAY": "allow",
+    "CUSTOM_PROVIDER_ID": "llamacpp",
   },
   "upload_source_maps": true,
 }
