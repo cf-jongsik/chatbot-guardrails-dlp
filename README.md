@@ -1,27 +1,31 @@
-# Chatbot Demo
+# firewall-for-ai-workers
 
-A Cloudflare Workers starter app for building an AI chat agent with tools, scheduling, and a modern React UI.
+A Cloudflare Workers demo that hosts a multimodal AI chat agent with safety guardrails, tool calling, scheduling, MCP server support, and a modern React UI.
 
 ## Overview
 
-This demo combines Cloudflare Agents, AI Chat, and a durable object-powered Worker backend to provide a chat experience that can:
+This project runs on the Cloudflare Workers platform and combines the following:
 
-- answer questions using a remote Llama model endpoint
-- invoke tool calls for weather, timezone, math, and scheduling
-- require user approval for sensitive tool actions
-- connect to additional MCP tool servers
-- schedule tasks for later execution
-- persist conversation state with Durable Objects
-- display notifications and theme switching in the browser UI
+- **Agents SDK + `@cloudflare/ai-chat`** for Durable Object-backed chat state
+- **Remote `llamacpp` model endpoint** routed through the Cloudflare AI Gateway
+- **Workers AI safety guardrails** using `@cf/meta/llama-3.2-1b-instruct`
+- **Tool-enabled assistant** with weather, timezone, math, scheduling, and image generation
+- **MCP server support** for connecting external tool servers with OAuth callbacks
+- **React 19 + Vite + Tailwind CSS 4** UI with theme switching and toast notifications
+- **R2 bucket** for storing generated images
 
 ## Features
 
 - Cloudflare Workers agent chat using `@cloudflare/ai-chat` and the `agents` SDK
-- Tool-enabled assistant with server-side and client-side tool support
-- File attachments and image handling in the UI
-- Task scheduling and cancellation via `agents/schedule`
-- Dark/light theme toggle and interactive toast notifications
-- Durable Object-backed chat state and scheduled task execution
+- Server-side streaming response using the Vercel AI SDK (`ai`)
+- Safety guardrails that analyze incoming user messages for harmful content
+- Built-in tools: weather, timezone, calculator, task scheduling, image generation
+- User approval flow for sensitive tool calls (e.g. large calculations)
+- MCP server management with add/remove via RPC and OAuth support
+- Scheduled task execution with broadcast notifications to connected clients
+- File attachments and image preview in the chat UI
+- Dark/light theme toggle and toast notifications
+- Durable Object-backed persistence for chat messages and schedules
 
 ## Quick Start
 
@@ -53,25 +57,27 @@ npm run types
 
 The project expects the following environment variables at runtime:
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-- `LLAMA_CPP_URL`
-- `LLAMA_CPP_KEY`
-- `LLAMA_CPP_MODEL`
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token
+- `LLAMA_CPP_URL` — Base URL of the remote Llama model endpoint
+- `LLAMA_CPP_KEY` — API key for the remote model endpoint
+- `LLAMA_CPP_MODEL` — Model name to use for chat completion
 
-These are wired via `env.d.ts` and used by `src/server.ts`.
+These are wired through `env.d.ts` and consumed in `src/server.ts`.
 
 ## Key Files
 
-- `src/server.ts` — Durable Object chat agent logic, tool definitions, model integration, and schedule execution
+- `src/server.ts` — Durable Object chat agent logic, tool definitions, model integration, scheduling, and safety guardrails
 - `src/app.tsx` — React chat UI with attachments, approvals, MCP server management, and theme controls
-- `wrangler.jsonc` — Cloudflare Worker configuration, Durable Objects, AI binding, and asset routing
+- `wrangler.jsonc` — Cloudflare Worker configuration, Durable Objects, AI binding, R2 bucket, and asset routing
 - `env.d.ts` — typed Cloudflare environment bindings
+- `vite.config.ts` — Vite build configuration with the Cloudflare Workers plugin
 
 ## Notes
 
-- The Worker uses the `AI` binding with remote AI gateway support.
-- `wrangler.jsonc` configures `assets` to serve the SPA and route `/agents/*` and `/oauth/*` through the Worker.
+- The worker uses the `AI` binding with `remote: true` and routes generation through Cloudflare AI Gateway.
+- `wrangler.jsonc` configures `assets` to serve the SPA and routes `/agents/*` and `/oauth/*` through the Worker.
+- Generated images are stored in the configured R2 bucket and served via `R2_PUBLIC_URL`.
 - Use `npm run check` to run formatting, linting, and TypeScript checks.
 
 ## Scripts

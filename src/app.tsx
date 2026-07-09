@@ -332,6 +332,7 @@ function Chat() {
     status,
   } = useAgentChat({
     agent,
+    autoContinueAfterToolResult: true,
     onToolCall: async (event) => {
       if (
         "addToolOutput" in event &&
@@ -435,7 +436,19 @@ function Chat() {
     for (const att of attachments) URL.revokeObjectURL(att.preview);
     setAttachments([]);
 
-    sendMessage({ role: "user", parts });
+    let aigw = true;
+    if (window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      aigw = params.get("aigw") === "off" ? false : true;
+    }
+
+    sendMessage({
+      role: "user",
+      parts,
+      metadata: {
+        aigw,
+      },
+    });
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }, [input, attachments, isStreaming, sendMessage]);
 

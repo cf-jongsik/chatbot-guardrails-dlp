@@ -97,61 +97,65 @@ export class ChatAgent extends AIChatAgent<Env> {
 
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
     try {
-      const guardrailAI = createWorkersAI({
-        binding: this.env.AI,
-        gateway: { id: this.env.GUARDRAIL_GATEWAY },
-      });
-
       const latestMessage = this.messages
         .filter((msg) => msg.role === "user")
         .at(-1);
 
       if (latestMessage) {
-        const lastUserTextMessage = {
-          ...latestMessage,
-          parts: latestMessage?.parts.filter((part) => part.type === "text"),
-        };
-        const lastMsg = [lastUserTextMessage];
-        const guardRails = await generateText({
-          model: guardrailAI("@cf/meta/llama-3.2-1b-instruct"),
-          maxOutputTokens: 1,
-          maxRetries: 0,
-          reasoning: "none",
-          messages: pruneMessages({
-            messages: await convertToModelMessages(lastMsg),
-            reasoning: "all",
-            toolCalls: "all",
-          }),
-        });
+        const { aigw } = latestMessage.metadata as { aigw: boolean };
+        if (aigw) {
+          const lastUserTextMessage = {
+            ...latestMessage,
+            parts: latestMessage?.parts.filter((part) => part.type === "text"),
+          };
+          const lastMsg = [lastUserTextMessage];
 
-        // const guardRailsOutput = guardRails.output.trim().split("\n");
-        // if (guardRailsOutput.length > 0 && guardRailsOutput[0] === "unsafe") {
-        //   const code = guardRailsOutput.filter((code) =>
-        //     code.startsWith("S"),
-        //   )[0];
-        //   const msg = `Guard rails triggered: ${ERROR_CODE[code as keyof typeof ERROR_CODE]}`;
+          const guardrailAI = createWorkersAI({
+            binding: this.env.AI,
+            gateway: { id: this.env.GUARDRAIL_GATEWAY },
+          });
 
-        //   return createUIMessageStreamResponse({
-        //     stream: createUIMessageStream({
-        //       execute: ({ writer }) => {
-        //         writer.write({ type: "start", messageId: "guardrail" });
-        //         writer.write({ type: "start-step" });
-        //         writer.write({ type: "text-start", id: "guardrail-text" });
-        //         writer.write({
-        //           type: "text-delta",
-        //           id: "guardrail-text",
-        //           delta: msg,
-        //         });
-        //         writer.write({ type: "text-end", id: "guardrail-text" });
-        //         writer.write({ type: "finish-step" });
-        //         writer.write({ type: "finish" });
-        //       },
-        //     }),
-        //   });
-        // }
+          const guardRails = await generateText({
+            model: guardrailAI("@cf/meta/llama-3.2-1b-instruct"),
+            maxOutputTokens: 1,
+            maxRetries: 0,
+            reasoning: "none",
+            messages: pruneMessages({
+              messages: await convertToModelMessages(lastMsg),
+              reasoning: "all",
+              toolCalls: "all",
+            }),
+          });
+
+          // const guardRailsOutput = guardRails.output.trim().split("\n");
+          // if (guardRailsOutput.length > 0 && guardRailsOutput[0] === "unsafe") {
+          //   const code = guardRailsOutput.filter((code) =>
+          //     code.startsWith("S"),
+          //   )[0];
+          //   const msg = `Guard rails triggered: ${ERROR_CODE[code as keyof typeof ERROR_CODE]}`;
+
+          //   return createUIMessageStreamResponse({
+          //     stream: createUIMessageStream({
+          //       execute: ({ writer }) => {
+          //         writer.write({ type: "start", messageId: "guardrail" });
+          //         writer.write({ type: "start-step" });
+          //         writer.write({ type: "text-start", id: "guardrail-text" });
+          //         writer.write({
+          //           type: "text-delta",
+          //           id: "guardrail-text",
+          //           delta: msg,
+          //         });
+          //         writer.write({ type: "text-end", id: "guardrail-text" });
+          //         writer.write({ type: "finish-step" });
+          //         writer.write({ type: "finish" });
+          //       },
+          //     }),
+          //   });
+          // }
+        }
       }
     } catch (e) {
-      console.error("security triggered");
+      console.error("security triggered", e);
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           execute: ({ writer }) => {
@@ -180,6 +184,7 @@ export class ChatAgent extends AIChatAgent<Env> {
         }),
       });
     }
+
     const mcpTools = this.mcp.getAITools();
     // const workersAI = createWorkersAI({
     //   binding: this.env.AI,
@@ -282,10 +287,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
               return "Not a valid schedule input";
             }
             const input =
-              when.type === "scheduled" ? when.date
-              : when.type === "delayed" ? when.delayInSeconds
-              : when.type === "cron" ? when.cron
-              : null;
+              when.type === "scheduled"
+                ? when.date
+                : when.type === "delayed"
+                  ? when.delayInSeconds
+                  : when.type === "cron"
+                    ? when.cron
+                    : null;
             if (!input) return "Invalid schedule type";
             try {
               this.schedule(input, "executeTask", description, {
